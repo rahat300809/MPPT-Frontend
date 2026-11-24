@@ -246,11 +246,32 @@ class _WeatherHeroState extends State<WeatherHero>
               ),
             ),
 
-            // Wall-mounted digital battery meter on the house wall
+            // 1. Left: LOAD Unit (Light bulb + Load Watts from sketch)
             Positioned(
-              right: 14,
-              bottom: 24,
-              child: _WallMountedBatteryMeter(
+              left: 10,
+              bottom: 18,
+              child: _LoadUnit(
+                loadWatts: t?.loadP ?? 16.7,
+                night: night,
+              ),
+            ),
+
+            // 2. Center Wall: Wall-Mounted MPPT Charge Controller Box
+            Positioned(
+              left: (MediaQuery.of(context).size.width * 0.50) - 37,
+              bottom: 20,
+              child: _MpptControllerUnit(
+                solarWatts: t?.pvP ?? 0.0,
+                charging: (t?.batI ?? 0) > 0.05,
+                night: night,
+              ),
+            ),
+
+            // 3. Right: BATTERY Storage Unit (+ and - terminals, voltage readout)
+            Positioned(
+              right: 10,
+              bottom: 16,
+              child: _BatteryStorageUnit(
                 voltage: t?.batV ?? 0.0,
                 charging: (t?.batI ?? 0) > 0.05,
                 night: night,
@@ -280,56 +301,46 @@ class _WeatherHeroState extends State<WeatherHero>
   }
 }
 
-/// Wall-mounted digital battery meter on the house wall
-class _WallMountedBatteryMeter extends StatelessWidget {
-  final double voltage;
-  final bool charging;
+/// 1. Wall-mounted LOAD unit with glowing bulb icon (from sketch)
+class _LoadUnit extends StatelessWidget {
+  final double loadWatts;
   final bool night;
 
-  const _WallMountedBatteryMeter({
-    required this.voltage,
-    required this.charging,
+  const _LoadUnit({
+    required this.loadWatts,
     required this.night,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Battery voltage percentage (10.5V to 14.4V scale)
-    final pct = (((voltage - 10.5) / 3.9) * 100).clamp(0, 100).toInt();
-
     return Container(
-      width: 114,
+      width: 86,
       padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         color: const Color(0xFF1E2430),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
-          width: 1.5,
+          width: 1.4,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.55),
-            blurRadius: 12,
-            offset: const Offset(3, 5),
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
+            color: Colors.black.withOpacity(0.5),
+            blurRadius: 10,
+            offset: const Offset(2, 4),
           ),
         ],
       ),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Left conduit connector gland where the circuit wire enters
+          // Right conduit connector gland (wire from MPPT enters here)
           Positioned(
-            left: -8,
+            right: -8,
             top: 22,
             child: Container(
               width: 5,
-              height: 10,
+              height: 9,
               decoration: BoxDecoration(
                 color: const Color(0xFF475569),
                 borderRadius: BorderRadius.circular(2),
@@ -337,24 +348,23 @@ class _WallMountedBatteryMeter extends StatelessWidget {
               ),
             ),
           ),
-          // 4 corner mounting screws
-          _screwDot(top: 0, left: 0),
-          _screwDot(top: 0, right: 0),
-          _screwDot(bottom: 0, left: 0),
-          _screwDot(bottom: 0, right: 0),
+          _unitScrew(top: 0, left: 0),
+          _unitScrew(top: 0, right: 0),
+          _unitScrew(bottom: 0, left: 0),
+          _unitScrew(bottom: 0, right: 0),
 
-          // Inner digital OLED/LCD display
+          // Inner screen
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+            padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
             decoration: BoxDecoration(
               color: const Color(0xFF0A0E17),
               borderRadius: BorderRadius.circular(5),
               border: Border.all(color: const Color(0xFF1E293B), width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.12),
-                  blurRadius: 8,
+                  color: const Color(0xFFF59E0B).withOpacity(0.12),
+                  blurRadius: 6,
                   spreadRadius: 1,
                 ),
               ],
@@ -363,12 +373,385 @@ class _WallMountedBatteryMeter extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top row: Status LED + Title + Battery icon
+                // Header: Lightbulb icon + LOAD label
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.lightbulb_rounded,
+                      size: 11,
+                      color: Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        'LOAD',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 7.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF94A3B8),
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 4,
+                      height: 4,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFFF59E0B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                // Load Watts readout
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      loadWatts.toStringAsFixed(1),
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                        color: const Color(0xFFFDE68A),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      'W',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFFF59E0B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'OUTPUT · 12V',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 6.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 2. Wall-mounted MPPT Charge Controller Box (center wall from sketch)
+class _MpptControllerUnit extends StatelessWidget {
+  final double solarWatts;
+  final bool charging;
+  final bool night;
+
+  const _MpptControllerUnit({
+    required this.solarWatts,
+    required this.charging,
+    required this.night,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 74,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2430),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.55),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Top cable gland (wire from solar roof enters here)
+          Positioned(
+            top: -8,
+            left: 28,
+            child: Container(
+              width: 9,
+              height: 5,
+              decoration: BoxDecoration(
+                color: const Color(0xFF475569),
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: const Color(0xFF334155), width: 0.8),
+              ),
+            ),
+          ),
+          // Left cable gland (wire to Load exits here)
+          Positioned(
+            left: -8,
+            top: 21,
+            child: Container(
+              width: 5,
+              height: 9,
+              decoration: BoxDecoration(
+                color: const Color(0xFF475569),
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: const Color(0xFF334155), width: 0.8),
+              ),
+            ),
+          ),
+          // Right cable gland (wire to Battery exits here)
+          Positioned(
+            right: -8,
+            top: 21,
+            child: Container(
+              width: 5,
+              height: 9,
+              decoration: BoxDecoration(
+                color: const Color(0xFF475569),
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: const Color(0xFF334155), width: 0.8),
+              ),
+            ),
+          ),
+
+          _unitScrew(top: 0, left: 0),
+          _unitScrew(top: 0, right: 0),
+          _unitScrew(bottom: 0, left: 0),
+          _unitScrew(bottom: 0, right: 0),
+
+          // Inner digital display
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+            padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0E17),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: const Color(0xFF1E293B), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.12),
+                  blurRadius: 6,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Header: Status LED + MPPT label + bolt
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 4.5,
+                      height: 4.5,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: charging ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (charging ? const Color(0xFF22C55E) : const Color(0xFFF59E0B)).withOpacity(0.8),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      'MPPT',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.bolt_rounded,
+                      size: 10,
+                      color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                // Solar Watts or status
+                Text(
+                  solarWatts > 0 ? '${solarWatts.toStringAsFixed(0)}W' : 'STANDBY',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    height: 1.0,
+                    color: const Color(0xFF38BDF8),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'CONTROLLER',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 6.5,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 3. Wall/Floor mounted BATTERY storage unit with +/- lugs (from sketch)
+class _BatteryStorageUnit extends StatelessWidget {
+  final double voltage;
+  final bool charging;
+  final bool night;
+
+  const _BatteryStorageUnit({
+    required this.voltage,
+    required this.charging,
+    required this.night,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (((voltage - 10.5) / 3.9) * 100).clamp(0, 100).toInt();
+
+    return Container(
+      width: 104,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2430),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.55),
+            blurRadius: 10,
+            offset: const Offset(2, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Top terminal lugs: + (red) and - (slate)
+          Positioned(
+            top: -9,
+            left: 18,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Red positive lug
+                Container(
+                  width: 12,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(color: const Color(0xFF991B1B), width: 0.8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '+',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 6,
+                        height: 0.9,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 32),
+                // Slate negative lug
+                Container(
+                  width: 12,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF64748B),
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(color: const Color(0xFF334155), width: 0.8),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '-',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 6,
+                        height: 0.9,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Left conduit connector gland (wire from MPPT enters here)
+          Positioned(
+            left: -8,
+            top: 22,
+            child: Container(
+              width: 5,
+              height: 9,
+              decoration: BoxDecoration(
+                color: const Color(0xFF475569),
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: const Color(0xFF334155), width: 0.8),
+              ),
+            ),
+          ),
+
+          _unitScrew(top: 0, left: 0),
+          _unitScrew(top: 0, right: 0),
+          _unitScrew(bottom: 0, left: 0),
+          _unitScrew(bottom: 0, right: 0),
+
+          // Inner OLED display
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
+            padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0E17),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: const Color(0xFF1E293B), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.12),
+                  blurRadius: 6,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top row: Status LED + BATTERY + Icon
                 Row(
                   children: [
                     Container(
-                      width: 5,
-                      height: 5,
+                      width: 4.5,
+                      height: 4.5,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
@@ -383,7 +766,7 @@ class _WallMountedBatteryMeter extends StatelessWidget {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        'BAT. METER',
+                        'BATTERY',
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 7.5,
                           fontWeight: FontWeight.w700,
@@ -399,7 +782,7 @@ class _WallMountedBatteryMeter extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 // Digital Voltage readout
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -408,7 +791,7 @@ class _WallMountedBatteryMeter extends StatelessWidget {
                     Text(
                       voltage.toStringAsFixed(2),
                       style: GoogleFonts.spaceGrotesk(
-                        fontSize: 17,
+                        fontSize: 16,
                         fontWeight: FontWeight.w800,
                         height: 1.0,
                         color: const Color(0xFF38BDF8),
@@ -424,15 +807,15 @@ class _WallMountedBatteryMeter extends StatelessWidget {
                     Text(
                       'V',
                       style: GoogleFonts.spaceGrotesk(
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.w700,
                         color: const Color(0xFF38BDF8).withOpacity(0.9),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
-                // Segmented battery level gauge bar
+                const SizedBox(height: 2),
+                // 5-segment battery level gauge bar
                 Row(
                   children: List.generate(5, (index) {
                     final barActive = (index + 1) * 20 <= pct || (index == 0 && voltage > 10.0);
@@ -441,8 +824,8 @@ class _WallMountedBatteryMeter extends StatelessWidget {
                         : (index < 3 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E));
                     return Expanded(
                       child: Container(
-                        height: 3,
-                        margin: EdgeInsets.only(right: index < 4 ? 2 : 0),
+                        height: 2.5,
+                        margin: EdgeInsets.only(right: index < 4 ? 1.5 : 0),
                         decoration: BoxDecoration(
                           color: barActive ? barColor : const Color(0xFF1E293B),
                           borderRadius: BorderRadius.circular(1),
@@ -458,23 +841,23 @@ class _WallMountedBatteryMeter extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _screwDot({double? top, double? bottom, double? left, double? right}) {
-    return Positioned(
-      top: top,
-      bottom: bottom,
-      left: left,
-      right: right,
-      child: Container(
-        width: 3.5,
-        height: 3.5,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          color: Color(0xFF64748B),
-        ),
+Widget _unitScrew({double? top, double? bottom, double? left, double? right}) {
+  return Positioned(
+    top: top,
+    bottom: bottom,
+    left: left,
+    right: right,
+    child: Container(
+      width: 3.2,
+      height: 3.2,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Color(0xFF64748B),
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// Temperature + humidity in the empty space beside the house.
@@ -733,23 +1116,37 @@ class _CalloutPainter extends CustomPainter {
     final w = size.width;
     final h = size.height;
 
-    // Same day-house anchors (night no longer swaps image)
-    final leftDot = Offset(w * 0.36, h * 0.54);
-    final topElbow = Offset(leftDot.dx, h * 0.135);
-    final topEnd = Offset(w * 0.31, h * 0.135);
-    final topPts = [leftDot, topElbow, topEnd];
+    // 1. Path 1: Top Energy Produced label -> drops down into Roof Panel (sketch: 16.9 kWh -> ↓)
+    final topStart = Offset(w * 0.28, h * 0.135);
+    final topElbow = Offset(w * 0.38, h * 0.135);
+    final roofPanelDot = Offset(w * 0.38, h * 0.44);
+    final topPts = [topStart, topElbow, roofPanelDot];
 
-    const meterWidth = 114.0;
-    const meterRight = 14.0;
-    final meterLeft = w - meterRight - meterWidth;
-    final meterCenterY = h - 24.0 - 28.0;
+    // 2. Path 2: Roof Collector Dot -> drops down into center wall MPPT top port
+    final roofCollectorDot = Offset(w * 0.46, h * 0.52);
+    final mpptCenterX = w * 0.50;
+    const mpptTopY = 280.0;
+    final roofToMpptPts = [
+      roofCollectorDot,
+      Offset(mpptCenterX, roofCollectorDot.dy + 24),
+      Offset(mpptCenterX, mpptTopY),
+    ];
 
-    final rightDot = Offset(w * 0.48, h * 0.58);
-    final bottomTip = Offset(meterLeft, meterCenterY);
-    final bottomPts = [
-      rightDot,
-      Offset(rightDot.dx, meterCenterY),
-      bottomTip,
+    // 3. Path 3: Center MPPT left port -> Left Load Unit right port
+    const wireY = 311.0;
+    final mpptLeftX = mpptCenterX - 37.0;
+    const loadRightX = 10.0 + 86.0;
+    final mpptToLoadPts = [
+      Offset(mpptLeftX, wireY),
+      const Offset(loadRightX, wireY),
+    ];
+
+    // 4. Path 4: Center MPPT right port -> Right Battery Unit left port
+    final mpptRightX = mpptCenterX + 37.0;
+    final batLeftX = w - 10.0 - 104.0;
+    final mpptToBatPts = [
+      Offset(mpptRightX, wireY),
+      Offset(batLeftX, wireY),
     ];
 
     // Halo + core so lines stay visible on sunny sand AND rainy dark roof
@@ -766,17 +1163,32 @@ class _CalloutPainter extends CustomPainter {
       ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round;
 
+    // Draw dashed lines for all 4 circuit segments
     _dashedPolyline(canvas, topPts, halo);
     _dashedPolyline(canvas, topPts, core);
-    _dashedPolyline(canvas, bottomPts, halo);
-    _dashedPolyline(canvas, bottomPts, core);
 
-    // Arrows: top toward Energy label (left), bottom toward Bat. Voltage (right)
-    _arrow(canvas, topEnd, const Offset(-1, 0), core.color);
-    _arrow(canvas, bottomTip, const Offset(1, 0), core.color);
+    _dashedPolyline(canvas, roofToMpptPts, halo);
+    _dashedPolyline(canvas, roofToMpptPts, core);
 
-    for (final pt in [leftDot, rightDot]) {
-      final haloR = 5.5 + pulse * 4.5;
+    _dashedPolyline(canvas, mpptToLoadPts, halo);
+    _dashedPolyline(canvas, mpptToLoadPts, core);
+
+    _dashedPolyline(canvas, mpptToBatPts, halo);
+    _dashedPolyline(canvas, mpptToBatPts, core);
+
+    // Arrows matching sketch:
+    // Path 1 arrow: points DOWN into solar panel on roof
+    _arrow(canvas, roofPanelDot, const Offset(0, 1), core.color);
+    // Path 2 arrow: points DOWN into MPPT top input
+    _arrow(canvas, Offset(mpptCenterX, mpptTopY), const Offset(0, 1), core.color);
+    // Path 3 arrow: points LEFT into Load
+    _arrow(canvas, const Offset(loadRightX, wireY), const Offset(-1, 0), core.color);
+    // Path 4 arrow: points RIGHT into Battery
+    _arrow(canvas, Offset(batLeftX, wireY), const Offset(1, 0), core.color);
+
+    // Glowing anchor dots on roof solar panels
+    for (final pt in [roofPanelDot, roofCollectorDot]) {
+      final haloR = 5.0 + pulse * 4.0;
       canvas.drawCircle(
         pt,
         haloR,
@@ -784,18 +1196,19 @@ class _CalloutPainter extends CustomPainter {
           ..color =
               const Color(0xFFEA8C2E).withOpacity((1 - pulse) * 0.45),
       );
-      canvas.drawCircle(pt, 5.2, Paint()..color = core.color);
-      canvas.drawCircle(pt, 4, Paint()..color = Colors.white);
-      canvas.drawCircle(pt, 2.3, Paint()..color = const Color(0xFFEA8C2E));
+      canvas.drawCircle(pt, 4.8, Paint()..color = core.color);
+      canvas.drawCircle(pt, 3.6, Paint()..color = Colors.white);
+      canvas.drawCircle(pt, 2.0, Paint()..color = const Color(0xFFEA8C2E));
     }
 
     if (animateBeads) {
-      // Two beads per path so flow clearly reaches the tip every cycle
+      // Flow beads along all 4 circuit paths
       _bead(canvas, topPts, pulse, const Color(0xFFEA8C2E));
-      _bead(canvas, topPts, (pulse + 0.5) % 1.0, const Color(0xFFEA8C2E));
-      _bead(canvas, bottomPts, pulse, const Color(0xFF22C55E));
-      _bead(
-          canvas, bottomPts, (pulse + 0.5) % 1.0, const Color(0xFF22C55E));
+      _bead(canvas, roofToMpptPts, pulse, const Color(0xFFF59E0B));
+      _bead(canvas, roofToMpptPts, (pulse + 0.5) % 1.0, const Color(0xFFF59E0B));
+      _bead(canvas, mpptToLoadPts, pulse, const Color(0xFFFBBF24));
+      _bead(canvas, mpptToBatPts, pulse, const Color(0xFF22C55E));
+      _bead(canvas, mpptToBatPts, (pulse + 0.5) % 1.0, const Color(0xFF22C55E));
     }
   }
 
@@ -803,10 +1216,10 @@ class _CalloutPainter extends CustomPainter {
     final n = Offset(-dir.dy, dir.dx);
     final p = Paint()
       ..color = color
-      ..strokeWidth = 1.8
+      ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
-    canvas.drawLine(tip, tip + dir * -1 + n * 3.5 + dir * 5, p);
-    canvas.drawLine(tip, tip + dir * -1 - n * 3.5 + dir * 5, p);
+    canvas.drawLine(tip, tip - dir * 6 + n * 4, p);
+    canvas.drawLine(tip, tip - dir * 6 - n * 4, p);
   }
 
   void _dashedPolyline(Canvas canvas, List<Offset> pts, Paint paint) {

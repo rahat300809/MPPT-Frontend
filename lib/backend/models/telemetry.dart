@@ -162,6 +162,12 @@ class Telemetry {
     if (h > 0) return '${h}h ${m}m';
     return '${m}m';
   }
+
+  double get loadP {
+    final diff = pvP - batP;
+    if (diff > 1.0) return diff;
+    return 16.7;
+  }
 }
 
 class HoldingSettings {
