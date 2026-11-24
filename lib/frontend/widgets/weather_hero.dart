@@ -246,31 +246,14 @@ class _WeatherHeroState extends State<WeatherHero>
               ),
             ),
 
-            // Bat. Voltage — plain red text (no card)
+            // Wall-mounted digital battery meter on the house wall
             Positioned(
               right: 14,
-              bottom: 28,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'Bat. Voltage',
-                    style: GoogleFonts.manrope(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFFDC2626),
-                    ),
-                  ),
-                  Text(
-                    '${(t?.batV ?? 0).toStringAsFixed(2)} V',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      height: 1.05,
-                      color: const Color(0xFFDC2626),
-                    ),
-                  ),
-                ],
+              bottom: 24,
+              child: _WallMountedBatteryMeter(
+                voltage: t?.batV ?? 0.0,
+                charging: (t?.batI ?? 0) > 0.05,
+                night: night,
               ),
             ),
           ],
@@ -294,6 +277,203 @@ class _WeatherHeroState extends State<WeatherHero>
       case WeatherKind.night:
         return const Color(0x281A2438);
     }
+  }
+}
+
+/// Wall-mounted digital battery meter on the house wall
+class _WallMountedBatteryMeter extends StatelessWidget {
+  final double voltage;
+  final bool charging;
+  final bool night;
+
+  const _WallMountedBatteryMeter({
+    required this.voltage,
+    required this.charging,
+    required this.night,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Battery voltage percentage (10.5V to 14.4V scale)
+    final pct = (((voltage - 10.5) / 3.9) * 100).clamp(0, 100).toInt();
+
+    return Container(
+      width: 114,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E2430),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(
+          color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.55),
+            blurRadius: 12,
+            offset: const Offset(3, 5),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Left conduit connector gland where the circuit wire enters
+          Positioned(
+            left: -8,
+            top: 22,
+            child: Container(
+              width: 5,
+              height: 10,
+              decoration: BoxDecoration(
+                color: const Color(0xFF475569),
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: const Color(0xFF334155), width: 0.8),
+              ),
+            ),
+          ),
+          // 4 corner mounting screws
+          _screwDot(top: 0, left: 0),
+          _screwDot(top: 0, right: 0),
+          _screwDot(bottom: 0, left: 0),
+          _screwDot(bottom: 0, right: 0),
+
+          // Inner digital OLED/LCD display
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0E17),
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: const Color(0xFF1E293B), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.12),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top row: Status LED + Title + Battery icon
+                Row(
+                  children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.8),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'BAT. METER',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 7.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF94A3B8),
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      charging ? Icons.bolt_rounded : Icons.battery_full_rounded,
+                      size: 10,
+                      color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                // Digital Voltage readout
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      voltage.toStringAsFixed(2),
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        height: 1.0,
+                        color: const Color(0xFF38BDF8),
+                        shadows: [
+                          Shadow(
+                            color: const Color(0xFF38BDF8).withOpacity(0.55),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      'V',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF38BDF8).withOpacity(0.9),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                // Segmented battery level gauge bar
+                Row(
+                  children: List.generate(5, (index) {
+                    final barActive = (index + 1) * 20 <= pct || (index == 0 && voltage > 10.0);
+                    final barColor = index < 1
+                        ? const Color(0xFFEF4444)
+                        : (index < 3 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E));
+                    return Expanded(
+                      child: Container(
+                        height: 3,
+                        margin: EdgeInsets.only(right: index < 4 ? 2 : 0),
+                        decoration: BoxDecoration(
+                          color: barActive ? barColor : const Color(0xFF1E293B),
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _screwDot({double? top, double? bottom, double? left, double? right}) {
+    return Positioned(
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+      child: Container(
+        width: 3.5,
+        height: 3.5,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: Color(0xFF64748B),
+        ),
+      ),
+    );
   }
 }
 
@@ -559,11 +739,16 @@ class _CalloutPainter extends CustomPainter {
     final topEnd = Offset(w * 0.31, h * 0.135);
     final topPts = [leftDot, topElbow, topEnd];
 
+    const meterWidth = 114.0;
+    const meterRight = 14.0;
+    final meterLeft = w - meterRight - meterWidth;
+    final meterCenterY = h - 24.0 - 28.0;
+
     final rightDot = Offset(w * 0.48, h * 0.58);
-    final bottomTip = Offset(w * 0.72, h * 0.88);
+    final bottomTip = Offset(meterLeft, meterCenterY);
     final bottomPts = [
       rightDot,
-      Offset(rightDot.dx, h * 0.88),
+      Offset(rightDot.dx, meterCenterY),
       bottomTip,
     ];
 
