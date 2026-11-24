@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,7 +9,7 @@ import '../../backend/weather/weather_models.dart';
 import '../../backend/weather/weather_service.dart';
 import '../theme/app_theme.dart';
 
-/// HelioGlass-identical home hero: 3D house + weather sky + dashed callouts.
+/// Architectural sketch home hero layout with live telemetry overlays and animated power circuit
 class WeatherHero extends StatefulWidget {
   final Telemetry? telemetry;
 
@@ -24,28 +23,16 @@ class WeatherHero extends StatefulWidget {
 }
 
 class _WeatherHeroState extends State<WeatherHero>
-    with TickerProviderStateMixin {
-  late final AnimationController _shimmer;
-  late final AnimationController _drift;
-  late final AnimationController _rain;
+    with SingleTickerProviderStateMixin {
   late final AnimationController _pulse;
 
   @override
   void initState() {
     super.initState();
-    // Slow shimmer so drifting clouds feel real (weather-app pace)
-    _shimmer = AnimationController(
-        vsync: this, duration: const Duration(seconds: 48))
-      ..repeat();
-    _drift = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 9000))
-      ..repeat(reverse: true);
-    _rain = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 780))
-      ..repeat();
     _pulse = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 2800))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )..repeat();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<WeatherService>().refresh();
@@ -54,9 +41,6 @@ class _WeatherHeroState extends State<WeatherHero>
 
   @override
   void dispose() {
-    _shimmer.dispose();
-    _drift.dispose();
-    _rain.dispose();
     _pulse.dispose();
     super.dispose();
   }
@@ -64,845 +48,350 @@ class _WeatherHeroState extends State<WeatherHero>
   @override
   Widget build(BuildContext context) {
     final weather = context.watch<WeatherService>();
-    final kind = weather.displayKind;
-    final night = kind.isNight;
     final t = widget.telemetry;
-    // Night: deep blue-grey sky, house still readable (not crushed black)
-    final canvas = night ? const Color(0xFF2A2E38) : const Color(0xFFF7F4EE);
-    final energyKwh = ((t?.energyWh ?? 0) / 1000);
-    final pvKw = (t?.pvP ?? 0) / 1000;
-    // Same day house for every weather; night only darkens the scene
-    const houseAsset = 'assets/helioglass_house_day.jpg';
 
-    return SizedBox(
-      height: 360,
-      width: double.infinity,
-      child: ColoredBox(
-        color: canvas,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Full-width day house (night = softer dim only — no window lights)
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: FractionallySizedBox(
-                widthFactor: 1,
-                heightFactor: 0.78,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ColorFiltered(
-                      colorFilter: night
-                          ? const ColorFilter.matrix(<double>[
-                              // Lighter night: keep house shape + roof visible
-                              0.55, 0.05, 0.08, 0, -6,
-                              0.04, 0.52, 0.10, 0, -4,
-                              0.06, 0.08, 0.62, 0, 4,
-                              0, 0, 0, 1, 0,
-                            ])
-                          : const ColorFilter.matrix(<double>[
-                              1, 0, 0, 0, 0,
-                              0, 1, 0, 0, 0,
-                              0, 0, 1, 0, 0,
-                              0, 0, 0, 1, 0,
-                            ]),
-                      child: Image.asset(
-                        houseAsset,
-                        fit: BoxFit.cover,
-                        alignment: const Alignment(0, 0.15),
-                        errorBuilder: (_, __, ___) =>
-                            ColoredBox(color: canvas),
-                      ),
-                    ),
-                    ColoredBox(color: _atmosphereTint(kind)),
-                    if (night)
-                      ColoredBox(
-                        color: const Color(0xFF1A1F2A).withOpacity(0.22),
-                      ),
-                    // Soft top fade into same canvas color only
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            canvas,
-                            canvas.withOpacity(0.55),
-                            Colors.transparent,
-                          ],
-                          stops: const [0, 0.14, 0.38],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+    final energyWh = (t?.energyWh != null && (t?.energyWh ?? 0) > 0)
+        ? (t!.energyWh)
+        : 17.9;
+    final loadWatts = (t?.loadP != null) ? t!.loadP : 17.9;
+    final batVoltage = (t?.batV != null && (t?.batV ?? 0) > 0)
+        ? t!.batV
+        : 17.9;
 
-            // Cute sun only (Sunny / Afternoon / Dusk) — no temp under it
-            if (kind.showsCuteSun)
-              Positioned(
-                right: kind == WeatherKind.afternoon ? 36 : 18,
-                top: kind == WeatherKind.afternoon ? 28 : 10,
-                child: AnimatedBuilder(
-                  animation: _shimmer,
-                  builder: (_, __) {
-                    final bob = math.sin(_shimmer.value * math.pi * 2) * 2;
-                    final sunSize =
-                        kind == WeatherKind.afternoon ? 48.0 : 56.0;
-                    return Transform.translate(
-                      offset: Offset(0, bob),
-                      child: Image.asset(
-                        'assets/cute_sun.png',
-                        width: sunSize,
-                        height: sunSize,
-                        fit: BoxFit.contain,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1E293B).withOpacity(0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final cardW = constraints.maxWidth;
+          const cardH = 430.0;
+          const imgAspect = 819.0 / 1024.0;
+          var renderW = cardH * imgAspect;
+          var renderH = cardH;
+          if (renderW > cardW) {
+            renderW = cardW;
+            renderH = renderW / imgAspect;
+          }
+          final offsetX = (cardW - renderW) / 2;
+          final offsetY = (cardH - renderH) / 2;
+
+          return SizedBox(
+            width: cardW,
+            height: cardH,
+            child: Stack(
+              children: [
+                // Centered Image + Overlays in exact image coordinate space
+                Positioned(
+                  left: offsetX,
+                  top: offsetY,
+                  width: renderW,
+                  height: renderH,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Base clean illustration (exact artwork matching user's design)
+                      Image.asset(
+                        'assets/home_sketch_scene.png',
+                        width: renderW,
+                        height: renderH,
+                        fit: BoxFit.fill,
                         filterQuality: FilterQuality.high,
-                        color: kind == WeatherKind.dusk
-                            ? const Color(0xFFFF9F6B)
-                            : null,
-                        colorBlendMode: kind == WeatherKind.dusk
-                            ? BlendMode.modulate
-                            : null,
-                        errorBuilder: (_, __, ___) => Icon(
-                          Icons.wb_sunny,
-                          size: sunSize,
-                          color: Colors.amber.shade600,
+                      ),
+
+                      // 1. Bulb Glow Pulse (behind bulb in L 💡 A D)
+                      Positioned(
+                        left: renderW * (82.0 / 819.0) - 20,
+                        top: renderH * (578.0 / 1024.0) - 20,
+                        width: 40,
+                        height: 40,
+                        child: AnimatedBuilder(
+                          animation: _pulse,
+                          builder: (_, __) => Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFBBF24).withOpacity(
+                                    (loadWatts > 0.5 ? 0.45 : 0.15) +
+                                        0.15 * math.sin(_pulse.value * math.pi * 2),
+                                  ),
+                                  blurRadius: 16,
+                                  spreadRadius: 6,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    );
-                  },
+
+                      // 2. Animated Circuit Beads Painter (traveling along the dashed lines)
+                      AnimatedBuilder(
+                        animation: _pulse,
+                        builder: (_, __) => CustomPaint(
+                          painter: _SketchBeadsPainter(
+                            pulse: _pulse.value,
+                            charging: (t?.batI ?? 0) > 0.05,
+                            hasLoad: loadWatts > 0.5,
+                          ),
+                        ),
+                      ),
+
+                      // 3. Top Energy Produced Text (e.g. 17.9 Wh)
+                      Positioned(
+                        left: renderW * (60.0 / 819.0),
+                        top: renderH * (96.0 / 1024.0),
+                        width: renderW * (195.0 / 819.0),
+                        height: renderH * (66.0 / 1024.0),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            energyWh >= 1000
+                                ? '${(energyWh / 1000).toStringAsFixed(1)} kWh'
+                                : '${energyWh.toStringAsFixed(1)} Wh',
+                            style: GoogleFonts.bebasNeue(
+                              fontSize: renderW * 0.072,
+                              letterSpacing: 0.8,
+                              height: 0.95,
+                              color: const Color(0xFF1C1917),
+                            ),
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
+                        ),
+                      ),
+
+                      // 4. LOAD Value (under L 💡 A D)
+                      Positioned(
+                        left: renderW * (24.0 / 819.0),
+                        top: renderH * (648.0 / 1024.0),
+                        width: renderW * (145.0 / 819.0),
+                        height: renderH * (66.0 / 1024.0),
+                        child: Center(
+                          child: Text(
+                            loadWatts.toStringAsFixed(1),
+                            style: GoogleFonts.orbitron(
+                              fontSize: renderW * 0.054,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                              height: 1.0,
+                              color: const Color(0xFF1C1917),
+                            ),
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
+                        ),
+                      ),
+
+                      // 5. BATTERY Voltage Value (inside Battery box between + - and ⚡)
+                      Positioned(
+                        left: renderW * (616.0 / 819.0),
+                        top: renderH * (726.0 / 1024.0),
+                        width: renderW * (66.0 / 819.0),
+                        height: renderH * (48.0 / 1024.0),
+                        child: Center(
+                          child: Text(
+                            batVoltage.toStringAsFixed(1),
+                            style: GoogleFonts.orbitron(
+                              fontSize: renderW * 0.026,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                              height: 1.0,
+                              color: const Color(0xFF1C1917),
+                            ),
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
 
-            // Temp + humidity beside house (above Bat. V)
-            Positioned(
-              right: 12,
-              bottom: 168,
-              child: _HouseSideWeatherBadge(
-                night: night,
-                temperatureC: weather.live?.temperatureC,
-                humidityPercent: weather.live?.humidityPercent,
-              ),
-            ),
-
-            // Sky effects / clouds (drawn above cute sun for Afternoon tuck)
-            AnimatedBuilder(
-              animation: Listenable.merge([_shimmer, _drift, _rain]),
-              builder: (_, __) => CustomPaint(
-                painter: _HelioWeatherPainter(
-                  kind: kind,
-                  shimmer: _shimmer.value,
-                  drift: _drift.value,
-                  rain: _rain.value,
-                  pulse: _pulse.value,
-                  paintSun: false,
-                ),
-              ),
-            ),
-
-            // Same Rainy-style dotted lines for EVERY weather (drawn above sky/sun)
-            AnimatedBuilder(
-              animation: _pulse,
-              builder: (_, __) => CustomPaint(
-                painter: _CalloutPainter(
-                  night: night,
-                  pulse: _pulse.value,
-                  animateBeads: true,
-                ),
-              ),
-            ),
-
-            // Top-left Energy Produced (red)
-            Positioned(
-              left: 18,
-              top: 10,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Energy Produced',
-                      style: GoogleFonts.manrope(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFFDC2626))),
-                  Text(
-                    '${energyKwh.toStringAsFixed(1)} kWh',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 27,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.8,
-                      color: const Color(0xFFDC2626),
+                // Live Temperature / weather pill in top corner
+                if (weather.live?.temperatureC != null)
+                  Positioned(
+                    right: 16,
+                    top: 14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${weather.live!.temperatureC.toStringAsFixed(0)}°C',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF334155),
+                            ),
+                          ),
+                          if (weather.live?.humidityPercent != null) ...[
+                            const SizedBox(width: 4),
+                            Text(
+                              '· ${weather.live!.humidityPercent.toStringAsFixed(0)}%',
+                              style: GoogleFonts.manrope(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-                  Text(
-                    '${pvKw.toStringAsFixed(2)} kW · ${kind.label}',
-                    style: GoogleFonts.manrope(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: const Color(0xFFEF4444),
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
-
-            // 1. Left: LOAD Unit (Light bulb + Load Watts from sketch)
-            Positioned(
-              left: 10,
-              bottom: 18,
-              child: _LoadUnit(
-                loadWatts: t?.loadP ?? 16.7,
-                night: night,
-              ),
-            ),
-
-            // 2. Center Wall: Wall-Mounted MPPT Charge Controller Box
-            Positioned(
-              left: (MediaQuery.of(context).size.width * 0.50) - 37,
-              bottom: 20,
-              child: _MpptControllerUnit(
-                solarWatts: t?.pvP ?? 0.0,
-                charging: (t?.batI ?? 0) > 0.05,
-                night: night,
-              ),
-            ),
-
-            // 3. Right: BATTERY Storage Unit (+ and - terminals, voltage readout)
-            Positioned(
-              right: 10,
-              bottom: 16,
-              child: _BatteryStorageUnit(
-                voltage: t?.batV ?? 0.0,
-                charging: (t?.batI ?? 0) > 0.05,
-                night: night,
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
+}
 
-  Color _atmosphereTint(WeatherKind kind) {
-    switch (kind) {
-      case WeatherKind.sunny:
-        return const Color(0x08FFE4A0);
-      case WeatherKind.afternoon:
-        return const Color(0x14F59E0B);
-      case WeatherKind.cloudy:
-        return const Color(0x1C64748B);
-      case WeatherKind.rainy:
-        return const Color(0x38334155);
-      case WeatherKind.dusk:
-        return const Color(0x28C25934);
-      case WeatherKind.night:
-        return const Color(0x281A2438);
+/// Animated beads traveling along the dashed power flow lines of the sketch
+class _SketchBeadsPainter extends CustomPainter {
+  final double pulse;
+  final bool charging;
+  final bool hasLoad;
+
+  _SketchBeadsPainter({
+    required this.pulse,
+    required this.charging,
+    required this.hasLoad,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // 1. Path 1: Top line -> elbow -> roof panel dot
+    final path1 = [
+      Offset(w * (261.0 / 819.0), h * (122.0 / 1024.0)),
+      Offset(w * (335.0 / 819.0), h * (122.0 / 1024.0)),
+      Offset(w * (335.0 / 819.0), h * (396.0 / 1024.0)),
+    ];
+
+    // 2. Path 2: Roof collector -> MPPT box top
+    final path2 = [
+      Offset(w * (405.0 / 819.0), h * (532.0 / 1024.0)),
+      Offset(w * (405.0 / 819.0), h * (610.0 / 1024.0)),
+    ];
+
+    // 3. Path 3: MPPT left -> wall turn -> Load wire
+    final path3 = [
+      Offset(w * (380.0 / 819.0), h * (672.0 / 1024.0)),
+      Offset(w * (275.0 / 819.0), h * (672.0 / 1024.0)),
+      Offset(w * (220.0 / 819.0), h * (665.0 / 1024.0)),
+    ];
+
+    // 4. Path 4: MPPT right -> horizontal -> down into battery top
+    final path4 = [
+      Offset(w * (432.0 / 819.0), h * (628.0 / 1024.0)),
+      Offset(w * (638.0 / 819.0), h * (628.0 / 1024.0)),
+      Offset(w * (638.0 / 819.0), h * (665.0 / 1024.0)),
+    ];
+
+    // Pulsing dot on solar roof panel
+    final roofDot = Offset(w * (335.0 / 819.0), h * (396.0 / 1024.0));
+    final haloR = 4.0 + pulse * 3.5;
+    canvas.drawCircle(
+      roofDot,
+      haloR,
+      Paint()..color = const Color(0xFFF59E0B).withOpacity((1 - pulse) * 0.45),
+    );
+    canvas.drawCircle(roofDot, 3.2, Paint()..color = const Color(0xFFF59E0B));
+    canvas.drawCircle(roofDot, 1.8, Paint()..color = Colors.white);
+
+    // Beads along paths
+    _bead(canvas, path1, pulse, const Color(0xFFEA8C2E));
+    _bead(canvas, path2, pulse, const Color(0xFFF59E0B));
+
+    if (hasLoad) {
+      _bead(canvas, path3, pulse, const Color(0xFFD97706));
+    }
+    if (charging) {
+      _bead(canvas, path4, pulse, const Color(0xFF16A34A));
+    } else {
+      _bead(canvas, path4, pulse, const Color(0xFF38BDF8));
     }
   }
-}
 
-/// 1. Wall-mounted LOAD unit with glowing bulb icon (from sketch)
-class _LoadUnit extends StatelessWidget {
-  final double loadWatts;
-  final bool night;
+  void _bead(Canvas canvas, List<Offset> pts, double frac, Color color) {
+    if (pts.length < 2) return;
+    final lens = <double>[];
+    var total = 0.0;
+    for (var i = 0; i < pts.length - 1; i++) {
+      final d = (pts[i + 1] - pts[i]).distance;
+      lens.add(d);
+      total += d;
+    }
+    if (total < 1) return;
 
-  const _LoadUnit({
-    required this.loadWatts,
-    required this.night,
-  });
+    final t = Curves.easeInOut.transform(frac.clamp(0.0, 1.0));
+    var dist = total * t;
+    var pos = pts.last;
+    for (var i = 0; i < lens.length; i++) {
+      final seg = lens[i];
+      if (seg < 0.001) continue;
+      if (dist <= seg) {
+        pos = Offset.lerp(pts[i], pts[i + 1], dist / seg)!;
+        break;
+      }
+      dist -= seg;
+      if (i == lens.length - 1) pos = pts.last;
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 86,
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2430),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
-          width: 1.4,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 10,
-            offset: const Offset(2, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Right conduit connector gland (wire from MPPT enters here)
-          Positioned(
-            right: -8,
-            top: 22,
-            child: Container(
-              width: 5,
-              height: 9,
-              decoration: BoxDecoration(
-                color: const Color(0xFF475569),
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: const Color(0xFF334155), width: 0.8),
-              ),
-            ),
-          ),
-          _unitScrew(top: 0, left: 0),
-          _unitScrew(top: 0, right: 0),
-          _unitScrew(bottom: 0, left: 0),
-          _unitScrew(bottom: 0, right: 0),
-
-          // Inner screen
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
-            padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0A0E17),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: const Color(0xFF1E293B), width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFF59E0B).withOpacity(0.12),
-                  blurRadius: 6,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header: Lightbulb icon + LOAD label
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.lightbulb_rounded,
-                      size: 11,
-                      color: Color(0xFFF59E0B),
-                    ),
-                    const SizedBox(width: 3),
-                    Expanded(
-                      child: Text(
-                        'LOAD',
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF94A3B8),
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 4,
-                      height: 4,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFF59E0B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                // Load Watts readout
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      loadWatts.toStringAsFixed(1),
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
-                        color: const Color(0xFFFDE68A),
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      'W',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFFF59E0B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'OUTPUT · 12V',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 6.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    // Outer glow
+    canvas.drawCircle(
+      pos,
+      5.0,
+      Paint()..color = color.withOpacity(0.35),
+    );
+    // Core bead
+    canvas.drawCircle(
+      pos,
+      3.0,
+      Paint()..color = color,
+    );
+    // Center white spark
+    canvas.drawCircle(
+      pos,
+      1.4,
+      Paint()..color = Colors.white,
     );
   }
-}
-
-/// 2. Wall-mounted MPPT Charge Controller Box (center wall from sketch)
-class _MpptControllerUnit extends StatelessWidget {
-  final double solarWatts;
-  final bool charging;
-  final bool night;
-
-  const _MpptControllerUnit({
-    required this.solarWatts,
-    required this.charging,
-    required this.night,
-  });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 74,
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2430),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.55),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Top cable gland (wire from solar roof enters here)
-          Positioned(
-            top: -8,
-            left: 28,
-            child: Container(
-              width: 9,
-              height: 5,
-              decoration: BoxDecoration(
-                color: const Color(0xFF475569),
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: const Color(0xFF334155), width: 0.8),
-              ),
-            ),
-          ),
-          // Left cable gland (wire to Load exits here)
-          Positioned(
-            left: -8,
-            top: 21,
-            child: Container(
-              width: 5,
-              height: 9,
-              decoration: BoxDecoration(
-                color: const Color(0xFF475569),
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: const Color(0xFF334155), width: 0.8),
-              ),
-            ),
-          ),
-          // Right cable gland (wire to Battery exits here)
-          Positioned(
-            right: -8,
-            top: 21,
-            child: Container(
-              width: 5,
-              height: 9,
-              decoration: BoxDecoration(
-                color: const Color(0xFF475569),
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: const Color(0xFF334155), width: 0.8),
-              ),
-            ),
-          ),
-
-          _unitScrew(top: 0, left: 0),
-          _unitScrew(top: 0, right: 0),
-          _unitScrew(bottom: 0, left: 0),
-          _unitScrew(bottom: 0, right: 0),
-
-          // Inner digital display
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
-            padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0A0E17),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: const Color(0xFF1E293B), width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.12),
-                  blurRadius: 6,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Header: Status LED + MPPT label + bolt
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 4.5,
-                      height: 4.5,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: charging ? const Color(0xFF22C55E) : const Color(0xFFF59E0B),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (charging ? const Color(0xFF22C55E) : const Color(0xFFF59E0B)).withOpacity(0.8),
-                            blurRadius: 4,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      'MPPT',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Icon(
-                      Icons.bolt_rounded,
-                      size: 10,
-                      color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                // Solar Watts or status
-                Text(
-                  solarWatts > 0 ? '${solarWatts.toStringAsFixed(0)}W' : 'STANDBY',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    height: 1.0,
-                    color: const Color(0xFF38BDF8),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'CONTROLLER',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 6.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 3. Wall/Floor mounted BATTERY storage unit with +/- lugs (from sketch)
-class _BatteryStorageUnit extends StatelessWidget {
-  final double voltage;
-  final bool charging;
-  final bool night;
-
-  const _BatteryStorageUnit({
-    required this.voltage,
-    required this.charging,
-    required this.night,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final pct = (((voltage - 10.5) / 3.9) * 100).clamp(0, 100).toInt();
-
-    return Container(
-      width: 104,
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2430),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: night ? const Color(0xFF475569) : const Color(0xFF64748B),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.55),
-            blurRadius: 10,
-            offset: const Offset(2, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // Top terminal lugs: + (red) and - (slate)
-          Positioned(
-            top: -9,
-            left: 18,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Red positive lug
-                Container(
-                  width: 12,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444),
-                    borderRadius: BorderRadius.circular(2),
-                    border: Border.all(color: const Color(0xFF991B1B), width: 0.8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '+',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 6,
-                        height: 0.9,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 32),
-                // Slate negative lug
-                Container(
-                  width: 12,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF64748B),
-                    borderRadius: BorderRadius.circular(2),
-                    border: Border.all(color: const Color(0xFF334155), width: 0.8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '-',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 6,
-                        height: 0.9,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Left conduit connector gland (wire from MPPT enters here)
-          Positioned(
-            left: -8,
-            top: 22,
-            child: Container(
-              width: 5,
-              height: 9,
-              decoration: BoxDecoration(
-                color: const Color(0xFF475569),
-                borderRadius: BorderRadius.circular(2),
-                border: Border.all(color: const Color(0xFF334155), width: 0.8),
-              ),
-            ),
-          ),
-
-          _unitScrew(top: 0, left: 0),
-          _unitScrew(top: 0, right: 0),
-          _unitScrew(bottom: 0, left: 0),
-          _unitScrew(bottom: 0, right: 0),
-
-          // Inner OLED display
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
-            padding: const EdgeInsets.fromLTRB(5, 3, 5, 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0A0E17),
-              borderRadius: BorderRadius.circular(5),
-              border: Border.all(color: const Color(0xFF1E293B), width: 1),
-              boxShadow: [
-                BoxShadow(
-                  color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.12),
-                  blurRadius: 6,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top row: Status LED + BATTERY + Icon
-                Row(
-                  children: [
-                    Container(
-                      width: 4.5,
-                      height: 4.5,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8)).withOpacity(0.8),
-                            blurRadius: 4,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        'BATTERY',
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 7.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF94A3B8),
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      charging ? Icons.bolt_rounded : Icons.battery_full_rounded,
-                      size: 10,
-                      color: charging ? const Color(0xFF22C55E) : const Color(0xFF38BDF8),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                // Digital Voltage readout
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      voltage.toStringAsFixed(2),
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        height: 1.0,
-                        color: const Color(0xFF38BDF8),
-                        shadows: [
-                          Shadow(
-                            color: const Color(0xFF38BDF8).withOpacity(0.55),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      'V',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF38BDF8).withOpacity(0.9),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                // 5-segment battery level gauge bar
-                Row(
-                  children: List.generate(5, (index) {
-                    final barActive = (index + 1) * 20 <= pct || (index == 0 && voltage > 10.0);
-                    final barColor = index < 1
-                        ? const Color(0xFFEF4444)
-                        : (index < 3 ? const Color(0xFFF59E0B) : const Color(0xFF22C55E));
-                    return Expanded(
-                      child: Container(
-                        height: 2.5,
-                        margin: EdgeInsets.only(right: index < 4 ? 1.5 : 0),
-                        decoration: BoxDecoration(
-                          color: barActive ? barColor : const Color(0xFF1E293B),
-                          borderRadius: BorderRadius.circular(1),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Widget _unitScrew({double? top, double? bottom, double? left, double? right}) {
-  return Positioned(
-    top: top,
-    bottom: bottom,
-    left: left,
-    right: right,
-    child: Container(
-      width: 3.2,
-      height: 3.2,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: Color(0xFF64748B),
-      ),
-    ),
-  );
-}
-
-/// Temperature + humidity in the empty space beside the house.
-class _HouseSideWeatherBadge extends StatelessWidget {
-  final bool night;
-  final double? temperatureC;
-  final double? humidityPercent;
-
-  const _HouseSideWeatherBadge({
-    required this.night,
-    required this.temperatureC,
-    required this.humidityPercent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final temp = temperatureC;
-    final hum = humidityPercent;
-    final fg = night ? Colors.white : const Color(0xFF44403C);
-    final muted = night ? Colors.white70 : const Color(0xFF78716C);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          temp != null ? '${temp.toStringAsFixed(0)}°C' : '--°C',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            height: 1.05,
-            color: fg,
-          ),
-        ),
-        Text(
-          hum != null ? '${hum.toStringAsFixed(0)}% humidity' : '--% humidity',
-          style: GoogleFonts.manrope(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: muted,
-          ),
-        ),
-      ],
-    );
-  }
+  bool shouldRepaint(covariant _SketchBeadsPainter old) =>
+      old.pulse != pulse ||
+      old.charging != charging ||
+      old.hasLoad != hasLoad;
 }
 
 /// Open weather chip grid (HelioGlass-style) kept visible under the blocks.
@@ -1097,511 +586,4 @@ class _WeatherChip extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Rainy-style dashed energy/battery callouts — always high contrast.
-class _CalloutPainter extends CustomPainter {
-  final bool night;
-  final double pulse;
-  final bool animateBeads;
-
-  _CalloutPainter({
-    required this.night,
-    required this.pulse,
-    this.animateBeads = true,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    // 1. Path 1: Top Energy Produced label -> drops down into Roof Panel (sketch: 16.9 kWh -> ↓)
-    final topStart = Offset(w * 0.28, h * 0.135);
-    final topElbow = Offset(w * 0.38, h * 0.135);
-    final roofPanelDot = Offset(w * 0.38, h * 0.44);
-    final topPts = [topStart, topElbow, roofPanelDot];
-
-    // 2. Path 2: Roof Collector Dot -> drops down into center wall MPPT top port
-    final roofCollectorDot = Offset(w * 0.46, h * 0.52);
-    final mpptCenterX = w * 0.50;
-    const mpptTopY = 280.0;
-    final roofToMpptPts = [
-      roofCollectorDot,
-      Offset(mpptCenterX, roofCollectorDot.dy + 24),
-      Offset(mpptCenterX, mpptTopY),
-    ];
-
-    // 3. Path 3: Center MPPT left port -> Left Load Unit right port
-    const wireY = 311.0;
-    final mpptLeftX = mpptCenterX - 37.0;
-    const loadRightX = 10.0 + 86.0;
-    final mpptToLoadPts = [
-      Offset(mpptLeftX, wireY),
-      const Offset(loadRightX, wireY),
-    ];
-
-    // 4. Path 4: Center MPPT right port -> Right Battery Unit left port
-    final mpptRightX = mpptCenterX + 37.0;
-    final batLeftX = w - 10.0 - 104.0;
-    final mpptToBatPts = [
-      Offset(mpptRightX, wireY),
-      Offset(batLeftX, wireY),
-    ];
-
-    // Halo + core so lines stay visible on sunny sand AND rainy dark roof
-    final halo = Paint()
-      ..color = night
-          ? const Color(0xCC000000)
-          : const Color(0xCCFFFFFF)
-      ..strokeWidth = 3.2
-      ..strokeCap = StrokeCap.round;
-    final core = Paint()
-      ..color = night
-          ? const Color(0xF5F5F1E8)
-          : const Color(0xF21C1917)
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round;
-
-    // Draw dashed lines for all 4 circuit segments
-    _dashedPolyline(canvas, topPts, halo);
-    _dashedPolyline(canvas, topPts, core);
-
-    _dashedPolyline(canvas, roofToMpptPts, halo);
-    _dashedPolyline(canvas, roofToMpptPts, core);
-
-    _dashedPolyline(canvas, mpptToLoadPts, halo);
-    _dashedPolyline(canvas, mpptToLoadPts, core);
-
-    _dashedPolyline(canvas, mpptToBatPts, halo);
-    _dashedPolyline(canvas, mpptToBatPts, core);
-
-    // Arrows matching sketch:
-    // Path 1 arrow: points DOWN into solar panel on roof
-    _arrow(canvas, roofPanelDot, const Offset(0, 1), core.color);
-    // Path 2 arrow: points DOWN into MPPT top input
-    _arrow(canvas, Offset(mpptCenterX, mpptTopY), const Offset(0, 1), core.color);
-    // Path 3 arrow: points LEFT into Load
-    _arrow(canvas, const Offset(loadRightX, wireY), const Offset(-1, 0), core.color);
-    // Path 4 arrow: points RIGHT into Battery
-    _arrow(canvas, Offset(batLeftX, wireY), const Offset(1, 0), core.color);
-
-    // Glowing anchor dots on roof solar panels
-    for (final pt in [roofPanelDot, roofCollectorDot]) {
-      final haloR = 5.0 + pulse * 4.0;
-      canvas.drawCircle(
-        pt,
-        haloR,
-        Paint()
-          ..color =
-              const Color(0xFFEA8C2E).withOpacity((1 - pulse) * 0.45),
-      );
-      canvas.drawCircle(pt, 4.8, Paint()..color = core.color);
-      canvas.drawCircle(pt, 3.6, Paint()..color = Colors.white);
-      canvas.drawCircle(pt, 2.0, Paint()..color = const Color(0xFFEA8C2E));
-    }
-
-    if (animateBeads) {
-      // Flow beads along all 4 circuit paths
-      _bead(canvas, topPts, pulse, const Color(0xFFEA8C2E));
-      _bead(canvas, roofToMpptPts, pulse, const Color(0xFFF59E0B));
-      _bead(canvas, roofToMpptPts, (pulse + 0.5) % 1.0, const Color(0xFFF59E0B));
-      _bead(canvas, mpptToLoadPts, pulse, const Color(0xFFFBBF24));
-      _bead(canvas, mpptToBatPts, pulse, const Color(0xFF22C55E));
-      _bead(canvas, mpptToBatPts, (pulse + 0.5) % 1.0, const Color(0xFF22C55E));
-    }
-  }
-
-  void _arrow(Canvas canvas, Offset tip, Offset dir, Color color) {
-    final n = Offset(-dir.dy, dir.dx);
-    final p = Paint()
-      ..color = color
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(tip, tip - dir * 6 + n * 4, p);
-    canvas.drawLine(tip, tip - dir * 6 - n * 4, p);
-  }
-
-  void _dashedPolyline(Canvas canvas, List<Offset> pts, Paint paint) {
-    const dash = 9.0;
-    const gap = 6.0;
-    for (var i = 0; i < pts.length - 1; i++) {
-      final a = pts[i];
-      final b = pts[i + 1];
-      final dist = (b - a).distance;
-      if (dist < 0.1) continue;
-      final dir = (b - a) / dist;
-      var drawn = 0.0;
-      var on = true;
-      while (drawn < dist) {
-        final len = math.min(on ? dash : gap, dist - drawn);
-        final p0 = a + dir * drawn;
-        final p1 = a + dir * (drawn + len);
-        if (on) canvas.drawLine(p0, p1, paint);
-        drawn += len;
-        on = !on;
-      }
-    }
-  }
-
-  void _bead(Canvas canvas, List<Offset> pts, double frac, Color color) {
-    if (pts.length < 2) return;
-    final lens = <double>[];
-    var total = 0.0;
-    for (var i = 0; i < pts.length - 1; i++) {
-      final d = (pts[i + 1] - pts[i]).distance;
-      lens.add(d);
-      total += d;
-    }
-    if (total < 1) return;
-
-    // Ease so the bead clearly arrives at the arrow tip (not stuck mid-line)
-    final t = Curves.easeInOut.transform(frac.clamp(0.0, 1.0));
-    var dist = total * t;
-    var pos = pts.last;
-    for (var i = 0; i < lens.length; i++) {
-      final seg = lens[i];
-      if (seg < 0.001) continue;
-      if (dist <= seg) {
-        pos = Offset.lerp(pts[i], pts[i + 1], dist / seg)!;
-        break;
-      }
-      dist -= seg;
-      if (i == lens.length - 1) pos = pts.last;
-    }
-
-    canvas.drawCircle(
-        pos, 6.0, Paint()..color = color.withOpacity(0.30));
-    canvas.drawCircle(pos, 3.0, Paint()..color = color);
-    canvas.drawCircle(pos, 1.3, Paint()..color = Colors.white);
-  }
-
-  @override
-  bool shouldRepaint(covariant _CalloutPainter old) =>
-      old.night != night ||
-      old.pulse != pulse ||
-      old.animateBeads != animateBeads;
-}
-
-class _HelioWeatherPainter extends CustomPainter {
-  final WeatherKind kind;
-  final double shimmer;
-  final double drift;
-  final double rain;
-  final double pulse;
-  final bool paintSun;
-
-  _HelioWeatherPainter({
-    required this.kind,
-    required this.shimmer,
-    required this.drift,
-    required this.rain,
-    required this.pulse,
-    this.paintSun = true,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-    final roof = Offset(w * 0.38, h * 0.54);
-    final sky = Offset(w * 0.84, h * 0.115);
-
-    switch (kind) {
-      case WeatherKind.sunny:
-        // Cute sun is a Flutter Image overlay; here only soft rays + white clouds
-        if (paintSun) {
-          _sunRays(canvas, size, sky, roof, 0.95);
-          _sun(canvas, sky, 13, shimmer, 0.95);
-        } else {
-          _sunRays(canvas, size, sky, roof, 0.45);
-        }
-        _driftClouds(
-          canvas,
-          size,
-          count: 3,
-          yBase: 0.10,
-          fill: const Color(0xF2FFFFFF),
-          speed: 0.35,
-        );
-        break;
-      case WeatherKind.afternoon:
-        // Soft shade + white cloud so cute sun looks tucked under
-        final a = Offset(w * 0.80, h * 0.14);
-        if (paintSun) {
-          _sunRays(canvas, size, a, roof.translate(-w * 0.02, h * 0.02), 0.55,
-              gold: const Color(0xFFFBBF68));
-          _sun(canvas, a, 12, shimmer, 0.7,
-              mid: const Color(0xFFFDE09B), halo: const Color(0xFFF6AD55));
-        }
-        _driftClouds(
-          canvas,
-          size,
-          count: 2,
-          yBase: 0.18,
-          fill: const Color(0xB8C4B8A8),
-          speed: 0.22,
-          scale: 1.05,
-        );
-        final coverX = a.dx - 6 + math.sin(drift * math.pi * 2) * 10;
-        _cloud(canvas, Offset(coverX, a.dy + 10), 1.2, const Color(0xF5FFFFFF));
-        _cloud(canvas, Offset(coverX + 18, a.dy + 14), 0.9,
-            const Color(0xE8F8F4EE));
-        break;
-      case WeatherKind.cloudy:
-        // White + dark clouds floating across the sky (no clear sun)
-        canvas.drawRect(
-          Offset.zero & Size(w, h * 0.40),
-          Paint()
-            ..shader = ui.Gradient.linear(
-              Offset.zero,
-              Offset(0, h * 0.40),
-              [const Color(0x2294A3B8), Colors.transparent],
-            ),
-        );
-        _driftClouds(
-          canvas,
-          size,
-          count: 3,
-          yBase: 0.08,
-          fill: const Color(0xE63A404B),
-          speed: 0.28,
-          scale: 1.15,
-        );
-        _driftClouds(
-          canvas,
-          size,
-          count: 3,
-          yBase: 0.14,
-          fill: const Color(0xF2FFFFFF),
-          speed: 0.38,
-          scale: 0.95,
-          phase: 0.33,
-        );
-        break;
-      case WeatherKind.rainy:
-        canvas.drawRect(
-          Offset.zero & Size(w, h * 0.52),
-          Paint()
-            ..shader = ui.Gradient.linear(
-              Offset.zero,
-              Offset(0, h * 0.52),
-              [const Color(0x2E334155), Colors.transparent],
-            ),
-        );
-        _cloud(canvas, sky.translate(-18 + (drift - 0.5) * 10, 2), 1.02,
-            const Color(0xDE64748B));
-        _cloud(canvas, sky.translate(-4 - (drift - 0.5) * 5, 8), 0.92,
-            const Color(0xEB94A3B8));
-        _paintRain(canvas, size);
-        break;
-      case WeatherKind.dusk:
-        // Warm sky only — cute sun overlay; no clouds
-        canvas.drawRect(
-          Offset.zero & Size(w, h * 0.42),
-          Paint()
-            ..shader = ui.Gradient.linear(
-              Offset.zero,
-              Offset(0, h * 0.42),
-              [
-                const Color(0x28EA580C),
-                const Color(0x14F59E0B),
-                Colors.transparent,
-              ],
-              [0, 0.45, 1],
-            ),
-        );
-        if (paintSun) {
-          final d = Offset(w * 0.83, h * 0.132);
-          _sunRays(canvas, size, d, roof, 0.55,
-              gold: const Color(0xFFFDA4AF),
-              warmColor: const Color(0xFFFFEDD5));
-          _sun(canvas, d, 11.5, shimmer, 0.7,
-              mid: const Color(0xFFFDBA74),
-              halo: const Color(0xFFFB7185),
-              warm: const Color(0xFFEA580C));
-        }
-        break;
-      case WeatherKind.night:
-        final moon = Offset(w * 0.84, h * 0.115);
-        canvas.drawCircle(
-          moon,
-          32,
-          Paint()
-            ..shader = ui.Gradient.radial(
-              moon,
-              32,
-              [const Color(0x32CBD5E1), Colors.transparent],
-            ),
-        );
-        canvas.drawCircle(moon, 10.5, Paint()..color = const Color(0xFFF8FAFC));
-        canvas.drawCircle(
-          moon.translate(4.8, -2.8),
-          9,
-          Paint()..color = const Color(0xFF334155),
-        );
-        final stars = [
-          Offset(w * 0.68, h * 0.08),
-          Offset(w * 0.74, h * 0.16),
-          Offset(w * 0.90, h * 0.07),
-          Offset(w * 0.92, h * 0.17),
-        ];
-        for (var i = 0; i < stars.length; i++) {
-          final twinkle =
-              0.35 + 0.65 * ((math.sin(pulse * math.pi * 2 + i * 1.6) + 1) / 2);
-          canvas.drawCircle(
-            stars[i],
-            1.4,
-            Paint()
-              ..color = const Color(0xFFFDE68A).withOpacity(twinkle),
-          );
-        }
-        break;
-    }
-  }
-
-  void _sun(
-    Canvas canvas,
-    Offset c,
-    double r,
-    double phase,
-    double intensity, {
-    Color mid = const Color(0xFFFFF1B8),
-    Color halo = const Color(0xFFFCD34D),
-    Color warm = const Color(0xFFF59E0B),
-  }) {
-    final breathe = 1 + 0.06 * math.sin(phase * math.pi * 2);
-    canvas.drawCircle(
-      c,
-      r * 5.2 * breathe,
-      Paint()
-        ..shader = ui.Gradient.radial(
-          c,
-          r * 5.2 * breathe,
-          [
-            mid.withOpacity(0.34 * intensity),
-            halo.withOpacity(0.14 * intensity),
-            warm.withOpacity(0.04 * intensity),
-            Colors.transparent,
-          ],
-          [0.0, 0.35, 0.7, 1.0],
-        ),
-    );
-    canvas.drawCircle(
-      c,
-      r,
-      Paint()
-        ..shader = ui.Gradient.radial(
-          c.translate(-r * 0.16, -r * 0.16),
-          r * 1.15,
-          [Colors.white, mid, halo.withOpacity(0.88)],
-          [0.0, 0.55, 1.0],
-        ),
-    );
-  }
-
-  void _sunRays(
-    Canvas canvas,
-    Size size,
-    Offset sun,
-    Offset roof,
-    double intensity, {
-    Color warmColor = const Color(0xFFFFFBF0),
-    Color gold = const Color(0xFFFDE08D),
-  }) {
-    final maxA = 0.14 * intensity.clamp(0.15, 1.0);
-    final wave = 0.86 + 0.14 * math.sin(shimmer * math.pi * 2);
-    final cone = Path()
-      ..moveTo(sun.dx - 10, sun.dy - 2)
-      ..lineTo(sun.dx + 8, sun.dy + 12)
-      ..lineTo(roof.dx + size.width * 0.24, roof.dy + size.height * 0.1)
-      ..lineTo(roof.dx - size.width * 0.18, roof.dy - size.height * 0.04)
-      ..close();
-    canvas.drawPath(
-      cone,
-      Paint()
-        ..shader = ui.Gradient.linear(
-          sun,
-          Offset(roof.dx - size.width * 0.05, roof.dy + size.height * 0.08),
-          [
-            warmColor.withOpacity(maxA * 1.05 * wave),
-            gold.withOpacity(maxA * 0.65 * wave),
-            warmColor.withOpacity(maxA * 0.24 * wave),
-            Colors.transparent,
-          ],
-          [0, 0.35, 0.72, 1],
-        ),
-    );
-    canvas.drawCircle(
-      roof,
-      size.width * 0.22,
-      Paint()
-        ..shader = ui.Gradient.radial(
-          roof,
-          size.width * 0.22,
-          [
-            warmColor.withOpacity(maxA * 0.95 * wave),
-            gold.withOpacity(maxA * 0.35 * wave),
-            Colors.transparent,
-          ],
-          [0.0, 0.45, 1.0],
-        ),
-    );
-  }
-
-  void _cloud(Canvas canvas, Offset c, double scale, Color fill) {
-    final r = 12.0 * scale;
-    final p = Paint()..color = fill;
-    canvas.drawCircle(c.translate(-r, r * 0.18), r, p);
-    canvas.drawCircle(c.translate(-r * 0.1, -r * 0.12), r * 1.25, p);
-    canvas.drawCircle(c.translate(r * 0.9, r * 0.15), r, p);
-    canvas.drawCircle(c.translate(r * 1.55, r * 0.32), r * 0.75, p);
-  }
-
-  /// Clouds that loop across the sky (left → right).
-  void _driftClouds(
-    Canvas canvas,
-    Size size, {
-    required int count,
-    required double yBase,
-    required Color fill,
-    double speed = 1.0,
-    double scale = 1.0,
-    double phase = 0.0,
-  }) {
-    for (var i = 0; i < count; i++) {
-      // Use shimmer (forward loop) so clouds keep flying one way
-      final t = (shimmer * speed + phase + i / count) % 1.0;
-      final x = -size.width * 0.2 + t * size.width * 1.4;
-      final y = size.height * (yBase + (i % 3) * 0.045);
-      final s = scale * (0.85 + (i % 3) * 0.12);
-      _cloud(canvas, Offset(x, y), s, fill);
-    }
-  }
-
-  void _paintRain(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..strokeWidth = 1.15
-      ..strokeCap = StrokeCap.round;
-    const count = 16;
-    for (var i = 0; i < count; i++) {
-      final t = (rain + i * 0.17) % 1.0;
-      final startX = size.width * (0.20 + (i / count) * 0.72);
-      final x = startX - t * 34;
-      final y = size.height * (0.16 + t * 0.56);
-      final len = 10.0 + (i % 3) * 3;
-      paint.color =
-          const Color(0x94475569).withOpacity((1 - t * 0.45) * 0.78);
-      canvas.drawLine(Offset(x, y), Offset(x - 4, y + len), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _HelioWeatherPainter old) =>
-      old.kind != kind ||
-      old.shimmer != shimmer ||
-      old.drift != drift ||
-      old.rain != rain ||
-      old.pulse != pulse ||
-      old.paintSun != paintSun;
 }
