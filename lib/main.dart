@@ -12,7 +12,7 @@ void main() {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => MpptBackend()),
+        ChangeNotifierProvider<MpptBackend>(create: (_) => InnoMpptBackend()),
         ChangeNotifierProvider(create: (_) => WeatherService()),
       ],
       child: const InnoMpptApp(),
@@ -26,7 +26,7 @@ class InnoMpptApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'InnoMPPT',
+      title: 'Innosphere MPPT',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const AppShell(),
